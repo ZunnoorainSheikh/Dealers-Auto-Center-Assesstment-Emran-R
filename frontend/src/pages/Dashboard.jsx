@@ -3,7 +3,6 @@ import ProductCard from '../components/ProductCard'
 import Loader from '../components/Loader'
 import ErrorMessage from '../components/ErrorMessage'
 import useDebounce from '../hooks/useDebounce'
-import usePagination from '../hooks/usePagination'
 import { fetchProducts } from '../services/api'
 
 const SORT_OPTIONS = [
@@ -22,15 +21,22 @@ const Dashboard = () => {
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('default')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
 
   const debouncedSearch = useDebounce(search, 300)
 
-  const loadProducts = async () => {
+  // Load products with pagination, search, and sort from API
+  const loadProducts = async (page = 1, searchTerm = '', sortBy = 'default') => {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchProducts()
-      setProducts(data)
+      const response = await fetchProducts(page, ITEMS_PER_PAGE, searchTerm, sortBy)
+      setProducts(response.data || [])
+      setTotalPages(response.totalPages || 1)
+      setTotal(response.total || 0)
+      setCurrentPage(page)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -38,44 +44,16 @@ const Dashboard = () => {
     }
   }
 
+  // Initial load
   useEffect(() => {
-    loadProducts()
+    loadProducts(1, '', 'default')
   }, [])
 
-  // Filter + sort — recomputed only when deps change
-  const filtered = useMemo(() => {
-    const query = debouncedSearch.toLowerCase()
-    const result = products.filter((p) =>
-      p.title.toLowerCase().includes(query)
-    )
-
-    switch (sort) {
-      case 'price-asc':
-        return [...result].sort((a, b) => a.price - b.price)
-      case 'price-desc':
-        return [...result].sort((a, b) => b.price - a.price)
-      case 'name-asc':
-        return [...result].sort((a, b) => a.title.localeCompare(b.title))
-      case 'name-desc':
-        return [...result].sort((a, b) => b.title.localeCompare(a.title))
-      default:
-        return result
-    }
-  }, [products, debouncedSearch, sort])
-
-  // Pass a reset key so page resets to 1 on filter/sort change
-  const resetKey = `${debouncedSearch}::${sort}`
-
-  const {
-    currentPage,
-    totalPages,
-    paginatedData,
-    goToPage,
-    nextPage,
-    prevPage,
-    hasNext,
-    hasPrev,
-  } = usePagination(filtered, ITEMS_PER_PAGE, resetKey)
+  // Reload when search/sort changes (reset to page 1)
+  useEffect(() => {
+    setCurrentPage(1)
+    loadProducts(1, debouncedSearch, sort)
+  }, [debouncedSearch, sort])
 
   // Render page number buttons with ellipsis for large page counts
   const pageButtons = useMemo(() => {
@@ -87,6 +65,24 @@ const Dashboard = () => {
     }
     return [...pages].sort((a, b) => a - b)
   }, [totalPages, currentPage])
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      loadProducts(currentPage + 1, debouncedSearch, sort)
+    }
+  }
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      loadProducts(currentPage - 1, debouncedSearch, sort)
+    }
+  }
+
+  const handleGoToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      loadProducts(page, debouncedSearch, sort)
+    }
+  }
 
   return (
     <div>
@@ -143,11 +139,11 @@ const Dashboard = () => {
 
       {/* States */}
       {loading && <Loader />}
-      {!loading && error && <ErrorMessage message={error} onRetry={loadProducts} />}
+      {!loading && error && <ErrorMessage message={error} onRetry={() => loadProducts(currentPage, debouncedSearch, sort)} />}
 
       {!loading && !error && (
         <>
-          {paginatedData.length === 0 ? (
+          {products.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-center">
               <div className="text-5xl">🔍</div>
               <p className="text-gray-500 text-lg">
@@ -174,14 +170,14 @@ const Dashboard = () => {
                 Showing{' '}
                 <span className="font-medium text-gray-700">
                   {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
-                  {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}
+                  {Math.min(currentPage * ITEMS_PER_PAGE, total)}
                 </span>{' '}
-                of <span className="font-medium text-gray-700">{filtered.length}</span> products
+                of <span className="font-medium text-gray-700">{total}</span> products
               </p>
 
               {/* Product Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {paginatedData.map((product) => (
+                {products.map((product) => (
                   <ProductCard key={product._id} product={product} />
                 ))}
               </div>
@@ -190,8 +186,8 @@ const Dashboard = () => {
               {totalPages > 1 && (
                 <div className="flex items-center justify-center gap-1.5 mt-10 flex-wrap">
                   <button
-                    onClick={prevPage}
-                    disabled={!hasPrev}
+                    onClick={handlePrevPage}
+                    disabled={currentPage === 1}
                     className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg
                       disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50
                       transition-colors"
@@ -208,7 +204,7 @@ const Dashboard = () => {
                           <span className="px-2 text-gray-400 select-none">…</span>
                         )}
                         <button
-                          onClick={() => goToPage(page)}
+                          onClick={() => handleGoToPage(page)}
                           className={`w-9 h-9 text-sm font-medium rounded-lg transition-colors ${
                             page === currentPage
                               ? 'bg-indigo-600 text-white shadow-sm'
@@ -222,8 +218,8 @@ const Dashboard = () => {
                   })}
 
                   <button
-                    onClick={nextPage}
-                    disabled={!hasNext}
+                    onClick={handleNextPage}
+                    disabled={currentPage === totalPages}
                     className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg
                       disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50
                       transition-colors"

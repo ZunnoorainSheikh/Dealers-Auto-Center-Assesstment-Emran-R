@@ -16,10 +16,8 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16">
           {/* Brand */}
           <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-sm group-hover:bg-indigo-700 transition-colors">
-              <span className="text-white font-bold text-sm select-none">PD</span>
-            </div>
-            <span className="font-bold text-gray-900 text-lg tracking-tight">ProductDash</span>
+           
+            <span className="font-bold text-gray-900 text-lg tracking-tight">Dashboard</span>
           </Link>
 
           {/* Nav links */}

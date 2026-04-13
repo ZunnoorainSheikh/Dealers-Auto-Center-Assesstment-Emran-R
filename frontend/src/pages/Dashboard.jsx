@@ -44,12 +44,7 @@ const Dashboard = () => {
     }
   }
 
-  // Initial load
-  useEffect(() => {
-    loadProducts(1, '', 'default')
-  }, [])
-
-  // Reload when search/sort changes (reset to page 1)
+  // Load products on mount and when search/sort changes
   useEffect(() => {
     setCurrentPage(1)
     loadProducts(1, debouncedSearch, sort)
